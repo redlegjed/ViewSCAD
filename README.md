@@ -42,6 +42,18 @@ to use several useful utilities, like `Renderer.rotate_face_down()` orient the o
 or `Renderer.place_on()`, which lets you place one object upon another:
 ![introspection example](https://github.com/nickc92/ViewSCAD/blob/master/images/introspection_example.png)
 
+## Color theme
+The color of the rendering can be changed using the _theme_ argument.
+
+```python
+# Use a dark theme renderer
+r_dark = viewscad.Renderer(theme='dark')
+r_dark.render(c)
+```
+![Dark theme example](images/dark_render_example.png)
+
+See examples/Examples.ipynb for more color customisation.
+
 ## Acknowledgements
 
 Thanks to Evan Jones for help creating the PyPI package.
