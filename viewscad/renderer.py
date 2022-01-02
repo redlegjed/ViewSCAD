@@ -13,20 +13,9 @@ import subprocess
 import pythreejs as pjs
 from IPython.display import display, SVG
 import numpy as np
+from .themes import Theme, theme_dark, theme_light
 
-def col_from_hex(c):
-    return [int(c[1:3], 16) / 256, int(c[3:5], 16) / 256, int(c[5:7], 16) / 256]
 
-OBJ_COLOR = '#f7d62c'
-#OBJ_COLOR = '#156289'
-OBJ_RGB = col_from_hex(OBJ_COLOR)
-SELECTED_FACE_COLOR = '#ff0000'
-SELECTED_FACE_RGB = col_from_hex(SELECTED_FACE_COLOR)
-SELECTED_EDGE_COLOR = '#6666ff'
-SELECTED_EDGE_COLOR_INT = int(SELECTED_EDGE_COLOR[1:], 16)
-SELECTED_VERTEX_COLOR = '#00ff00'
-SELECTED_VERTEX_RGB = col_from_hex(SELECTED_VERTEX_COLOR)
-BACKGROUND_COLOR = '#ffffff'
 DEFAULT_FN = 20
 DEBUG = False
 
@@ -129,11 +118,13 @@ def make_arrow(cyl_mesh, head_mesh, start_vec, end_vec, width, head_width, head_
 
 
 class RenderedObject:
-    def __init__(self, stl_file):
+    def __init__(self, stl_file,theme=theme_light):
         self.faces = []
         self.vertices = []
         self.normals = []
         self.scad_digest = None
+        self.theme = theme
+
         vert_str_to_index = {}
         ind = 0
         for ln in stl_file:
@@ -159,7 +150,7 @@ class RenderedObject:
         self.face_verts = self.vertices[self.faces] # indices face #, face-vertex-#, coord #
         self.nFaces = self.face_verts.shape[0]
         self.plot_verts = self.face_verts.reshape((self.nFaces * 3, 3)).astype('float32')
-        self.base_cols = np.tile(np.array(OBJ_RGB), (self.nFaces * 3, 1)).astype('float32')
+        self.base_cols = np.tile(np.array(self.theme.OBJ_RGB), (self.nFaces * 3, 1)).astype('float32')
         self.v1 = self.face_verts[:, 1, :] - self.face_verts[:, 0, :]
         self.v2 = self.face_verts[:, 2, :] - self.face_verts[:, 1, :]
         self.face_normals = np.cross(self.v1, self.v2)
@@ -198,6 +189,21 @@ class Renderer:
         self.height = kw.get('height', 600)
         self.draw_grids = kw.get('draw_grids', True)
         self.grid_lines_width = kw.get('grid_lines_width', 1)
+        self.theme = kw.get('theme',theme_light)
+
+        # Check theme
+        if isinstance(self.theme,str):
+            if self.theme.lower()=='light':
+                self.theme = theme_light
+            elif self.theme.lower()=='dark':
+                self.theme = theme_dark
+            else:
+                raise ValueError(f'Theme [{self.theme}] not recognized')
+
+        elif isinstance(self.theme,Theme):
+            pass
+        else:
+            raise ValueError('Theme must be either a str or a Theme object')
 
     def _try_executable(self, executable_path):
         if os.path.isfile(executable_path):
@@ -276,7 +282,7 @@ class Renderer:
         if max_extent / space2 < 5: space = space1
         N = int(pymath.floor(max_extent / space + 2.0))
         grid_cols = []
-        axis_cols = ['#ff3333', '#33ff33', '#3333ff']
+        axis_cols = self.theme.axis_cols 
         ends = []
         for axis1 in range(3):
             start = pymath.floor(extents[axis1][0] / space) * space
@@ -327,7 +333,7 @@ class Renderer:
                     pt3[ax1] += pt[0]
                     pt3[ax2] += pt[1]                    
                     grid_verts.append(pt3)
-                    grid_cols.append('#000000')
+                    grid_cols.append(self.theme.TEXT_COLOR)
 
             for seg in char_lns:
                 for pt in seg:
@@ -336,7 +342,7 @@ class Renderer:
                     pt3[ax1] += pt[0] * char_width
                     pt3[ax2] += 1.2 * (pt[1] - 0.5) * char_width
                     grid_verts.append(pt3)
-                    grid_cols.append('#000000')
+                    grid_cols.append(self.theme.TEXT_COLOR)
             
         lines_geom = pjs.Geometry(vertices=grid_verts, colors =grid_cols)
         lines = pjs.LineSegments(geometry=lines_geom,
@@ -392,7 +398,7 @@ class Renderer:
             self.render_openscad_str(in_obj, **kw)
             
     def render_stl(self, stl_fname):
-        rendered_obj = RenderedObject(open(stl_fname))
+        rendered_obj = RenderedObject(open(stl_fname),theme=self.theme)
         self._render_obj(rendered_obj)
         
     def _get_digest(self, scad_str):
@@ -611,7 +617,7 @@ class Renderer:
             self.render_to_file(openscad_str, openscad_out_file, **kw)
             if openscad_out_file.find('.stl') >= 0:                
                 #self._render_stl(openscad_out_file)
-                return_obj = RenderedObject(open(openscad_out_file))
+                return_obj = RenderedObject(open(openscad_out_file),theme=theme_light)
             else:
                 print('No rendering if non-STL file is being created.')
         except Exception as e:
@@ -663,11 +669,11 @@ class Renderer:
         if n_vert > 0: v = vertices[0].tolist()
         select_point_geom = pjs.SphereGeometry(radius=1.0)
         select_point_mesh = pjs.Mesh(select_point_geom,
-                 material=pjs.MeshBasicMaterial(color=SELECTED_VERTEX_COLOR),
+                 material=pjs.MeshBasicMaterial(color=self.theme.SELECTED_VERTEX_COLOR),
                  position=v, scale=(0.0, 0.0, 0.0))
         
         #select_edge_mesh = pjs.ArrowHelper(dir=pjs.Vector3(1.0, 0.0, 0.0), origin=pjs.Vector3(0.0, 0.0, 0.0), length=1.0,
-        #                                  hex=SELECTED_EDGE_COLOR_INT, headLength=0.1, headWidth=0.05)
+        #                                  hex=self.theme.SELECTED_EDGE_COLOR_INT, headLength=0.1, headWidth=0.05)
         
         arrow_cyl_mesh = pjs.Mesh(geometry=pjs.SphereGeometry(radius=0.01), material=pjs.MeshLambertMaterial())
         arrow_head_mesh = pjs.Mesh(geometry=pjs.SphereGeometry(radius=0.001), material=pjs.MeshLambertMaterial())
@@ -679,7 +685,7 @@ class Renderer:
             grids, space = self._get_grids(vertices)
             scene_things.append(grids)
 
-        scene = pjs.Scene(children=scene_things, background=BACKGROUND_COLOR)
+        scene = pjs.Scene(children=scene_things, background=self.theme.BACKGROUND_COLOR)
         
         
         click_picker = pjs.Picker(controlling=my_object_mesh, event='dblclick')
@@ -715,14 +721,14 @@ class Renderer:
                     edge_head_length = radius * 4
                     edge_head_width = radius * 2
                     select_point_mesh.scale = (radius, radius, radius)
-                    top_msg.value = '<font color="{}">selected face: {}</font>, <font color="{}">edge: {}</font>, <font color="{}"> vertex: {}</font>'.format(SELECTED_FACE_COLOR, face, SELECTED_EDGE_COLOR, edge, SELECTED_VERTEX_COLOR, vertex)   
+                    top_msg.value = '<font color="{}">selected face: {}</font>, <font color="{}">edge: {}</font>, <font color="{}"> vertex: {}</font>'.format(self.theme.SELECTED_FACE_COLOR, face, self.theme.SELECTED_EDGE_COLOR, edge, self.theme.SELECTED_VERTEX_COLOR, vertex)   
                     newcols = rendered_obj.base_cols.copy()
-                    newcols[face*3:(face+1)*3] = np.array(SELECTED_FACE_RGB, dtype='float32')
+                    newcols[face*3:(face+1)*3] = np.array(self.theme.SELECTED_FACE_RGB, dtype='float32')
                     select_point_mesh.position = close_vert.tolist()
                     obj_geometry.attributes['color'].array = newcols
                     
                     with out:   
-                        make_arrow(arrow_cyl_mesh, arrow_head_mesh, edge_start_vert, edge_end_vert, radius/2, radius, radius*3, SELECTED_EDGE_COLOR) 
+                        make_arrow(arrow_cyl_mesh, arrow_head_mesh, edge_start_vert, edge_end_vert, radius/2, radius, radius*3, self.theme.SELECTED_EDGE_COLOR) 
                     
                 except:
                     with out:
